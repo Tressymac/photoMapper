@@ -23,48 +23,35 @@
  
  // My "main"/entrypoint function
 exports.generateThumbnails =  async (file, context) => {
-    const gcs = new Storage();
-    const datafile = gcs.bucket(file.bucket).file(file.name);
-    // datafile = storage.bucket(bucketName).file(fileName);
-    console.log(datafile.name)
-    // Creating a working driectory on pur VM to download the original fie 
-        // The value of this virable will be something like ".../temp/exif"
+        const gcs = new Storage();
+        const datafile = gcs.bucket(file.bucket).file(file.name);
+        // datafile = storage.bucket(bucketName).file(fileName);
+        console.log(datafile.name);
+
+        // Creating a working driectory on our VM to download the original fie 
         const workingDir = path.join(os.tmpdir(), 'exif');
         console.log(`Working ${workingDir}`);
 
-        // Create a virable that holds a path to the local verison of the file
+        // Create a variable that holds a path to the local verison of the file
         const tmpFilePath = path.join(workingDir, datafile.name);
         console.log(`TmpFilepath: ${tmpFilePath}`);
 
         // Wait untill the working dir is ready
         fs.ensureDir(workingDir);
-        if(fs.ensureDir(workingDir) != null){
-            console.log(`Working directory is ready`);
-        }else{
-            console.log('Its not ready')
-        }
 
-        // console.log(photoFile)
-        // storage.bucket(bucketName).file(fileName)
         gcs.bucket(file.bucket).file(file.name).download({
             destination: tmpFilePath        
         }, async (err, file, apiResponse)  => {
             // This stuff happens after the file is downloaded locally
             console.log(`File downloaded: ${tmpFilePath}`);
-    
-            // pass the local to our readExifData function 
-            // const coordinates = await readExifData(tmpFilePath);
-            // console.log(coordinates);
-    
+
             // Pass the GCS object to the helper function
-            // This does not read teh data in the file
             readMetadata(datafile);
     
     
             // Delete the local version of the file 
             await fs.remove(workingDir);
         }); 
-
 };
  
  // Call the entrypoint function 
@@ -77,16 +64,43 @@ exports.generateThumbnails =  async (file, context) => {
     //  console.log(metadata);
     //  console.log(metadata.contentType);
         if (metadata.contentType === 'image/jpeg' || metadata.contentType === 'image/png'){
-            console.log("yay")
-            console.log(metadata.contentType)
-            console.log(metadata.generation)
+            // console.log(metadata.contentType)
+            // console.log(metadata.generation)
             // this.canPassToreadExifData = true;
+            const newFileName = (metadata.generation)
+            const newFileType = (metadata.contentType)
+            const name = metadata.name;
+            // console.log(newFileName)
+            // return newFileName
+            await downloadNewFile(newFileName, newFileType, name);
         }else{
             console.log("This image format is not allowed, please upload a jpeg or a png");
             canPassToreadExifData = true;
             console.log(canPassToreadExifData)
         }
 
+ };
+
+  const downloadNewFile = async (newFileName, newFileType, name) => {
+     // Create a new virable that holds a path to the local verison of the file with the new name
+     const gcs = new Storage();
+     const RandomNumber = Math.floor(Math.random() * 1000) + 100045;
+     const numberToString = RandomNumber.toString();
+     const newWorkingDir = path.join(os.tmpdir(), 'exifNew');
+     const newTmpFilePath = path.join(newWorkingDir, `image${newFileName}${numberToString}`);
+     console.log(`New TmpFilepath: ${newTmpFilePath}`);
+     await fs.ensureDir(newWorkingDir);
+     const options = {
+        destination: newTmpFilePath,
+     };
+     await storage.bucket(bucketName).file(name).download(options);
+
+         storage
+         .bucket('photomapper-jessymac-imagesfinal')
+         .upload(newTmpFilePath, newFileType);
+         await fs.remove(newWorkingDir);
+         console.log("Photo uploded to new bucket")
+//     }); 
  };
 
  async function readExifData(localFile){
@@ -113,6 +127,6 @@ exports.generateThumbnails =  async (file, context) => {
         return null; 
     }
     
-    }
+ }
 
  
