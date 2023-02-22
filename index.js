@@ -2,6 +2,7 @@
  const parse = require('fast-csv');
  const {Storage} = require('@google-cloud/storage');
  const {Firestore} = require('@google-cloud/firestore');
+ const sharp = require('sharp');
  var iconv = require('iconv-lite');
  const path = require('path');
  const fs = require('fs-extra');
@@ -12,121 +13,109 @@
  const parseDMS = require('parse-dms');
  
  
- // Variables
- const storage = new Storage();
- const firestore = new Firestore();
- const bucketName = 'photomapper-jessymac-uploads';
-  const fileName = 'AdobeStock_522623794.jpeg'; // Correct format
+// Variables
+const storage = new Storage();
+const firestore = new Firestore();
+const fileName = 'AdobeStock_522623794.jpeg'; // Correct format
 //  const fileName = '6v07ium5q0011.webp'; // Incorrect format image
- var canPassToreadExifData = false; 
+const secondBucketName = storage.bucket('photomapper-jessymac-uploads');
+const bucketName = 'photomapper-jessymac-uploads';
+const thumbNailBucket = storage.bucket('photomapper-jessymac-thumbnails');
+const finalBucket = storage.bucket('photomapper-jessymac-imagesfinal');
  
- 
- // My "main"/entrypoint function
+// My "main"/entrypoint function
 exports.generateThumbnails =  async (file, context) => {
-        const gcs = new Storage();
-        const datafile = gcs.bucket(file.bucket).file(file.name);
-        // datafile = storage.bucket(bucketName).file(fileName);
-        console.log(datafile.name);
+    const datafile = storage.bucket(file.bucket).file(file.name);
+    // datafile = storage.bucket(bucketName).file(fileName);
+    console.log(datafile.name);
 
-        // Creating a working driectory on our VM to download the original fie 
-        const workingDir = path.join(os.tmpdir(), 'exif');
-        console.log(`Working ${workingDir}`);
+    // Creating a working driectory on our VM to download the original fie 
+    const workingDir = path.join(os.tmpdir(), 'exif');
+    console.log(`Working ${workingDir}`);
 
-        // Create a variable that holds a path to the local verison of the file
-        const tmpFilePath = path.join(workingDir, datafile.name);
-        console.log(`TmpFilepath: ${tmpFilePath}`);
+    // Create a variable that holds a path to the local verison of the file
+    const tmpFilePath = path.join(workingDir, datafile.name);
+    console.log(`TmpFilepath: ${tmpFilePath}`);
 
-        // Wait untill the working dir is ready
-        fs.ensureDir(workingDir);
+    // Wait untill the working dir is ready
+    fs.ensureDir(workingDir);
 
-        gcs.bucket(file.bucket).file(file.name).download({
-            destination: tmpFilePath        
-        }, async (err, file, apiResponse)  => {
-            // This stuff happens after the file is downloaded locally
-            console.log(`File downloaded: ${tmpFilePath}`);
+    storage.bucket(file.bucket).file(file.name).download({
+        destination: tmpFilePath        
+    }, async (err, file, apiResponse)  => {
+        // This stuff happens after the file is downloaded locally
+        console.log(`File downloaded: ${tmpFilePath}`);
 
-            // Pass the GCS object to the helper function
-            readMetadata(datafile);
+        // Pass the GCS object to the helper function
+        await readMetadata(datafile);
     
-    
-            // Delete the local version of the file 
-            await fs.remove(workingDir);
-        }); 
+        // Delete the local version of the file 
+        // await fs.remove(workingDir);
+    }); 
 };
  
- // Call the entrypoint function 
- // This is not needed in the google cloud function 
+// Call the entrypoint function 
+// This is not needed in the google cloud function 
 // generateThumbnails();
  
- // Helper functions 
- async function readMetadata(gcsFile) {
-     const [metadata] = await gcsFile.getMetadata();
-    //  console.log(metadata);
-    //  console.log(metadata.contentType);
-        if (metadata.contentType === 'image/jpeg' || metadata.contentType === 'image/png'){
-            // console.log(metadata.contentType)
-            // console.log(metadata.generation)
-            // this.canPassToreadExifData = true;
-            const newFileName = (metadata.generation)
-            const newFileType = (metadata.contentType)
-            const name = metadata.name;
-            // console.log(newFileName)
-            // return newFileName
-            await downloadNewFile(newFileName, newFileType, name);
-        }else{
-            console.log("This image format is not allowed, please upload a jpeg or a png");
-            canPassToreadExifData = true;
-            console.log(canPassToreadExifData)
-        }
-
- };
-
-  const downloadNewFile = async (newFileName, newFileType, name) => {
-     // Create a new virable that holds a path to the local verison of the file with the new name
-     const gcs = new Storage();
-     const RandomNumber = Math.floor(Math.random() * 1000) + 100045;
-     const numberToString = RandomNumber.toString();
-     const newWorkingDir = path.join(os.tmpdir(), 'exifNew');
-     const newTmpFilePath = path.join(newWorkingDir, `image${newFileName}${numberToString}`);
-     console.log(`New TmpFilepath: ${newTmpFilePath}`);
-     await fs.ensureDir(newWorkingDir);
-     const options = {
-        destination: newTmpFilePath,
-     };
-     await storage.bucket(bucketName).file(name).download(options);
-
-         storage
-         .bucket('photomapper-jessymac-imagesfinal')
-         .upload(newTmpFilePath, newFileType);
-         await fs.remove(newWorkingDir);
-         console.log("Photo uploded to new bucket")
-//     }); 
- };
-
- async function readExifData(localFile){
-    // Use the exif-async package to read the exif data
-    let exifData;
-    try{
-        exifData = await getExif(localFile);
-        console.log(exifData.gps);
-    
-        if (Object.keys(exifData.gps).length > 0){
-           let gpsInDecimal = getGPSCoords(exifData.gps);
-           console.log(gpsInDecimal);
-           console.log(`Lat: ${gpsInDecimal.lat}`);
-           console.log(`Lon: ${gpsInDecimal.lon}`);
-           // Return the lat/lon object
-           return gpsInDecimal;
-        } else{
-            console.log("No gps data was found in this photo");
-            return null;
-        }
-    
-    }catch(err){
-        console.log(err);
-        return null; 
+// Helper functions 
+async function readMetadata(gcsFile) {
+    const [metadata] = await gcsFile.getMetadata();
+    if (metadata.contentType === 'image/jpeg' || metadata.contentType === 'image/png'){
+        let shortContent = metadata.contentType.slice(6);
+        let newName = `${metadata.generation}.${shortContent}`;   
+        console.log(`My new name is ${newName}`);         
+        const name = metadata.name;
+        await downloadNewFile(name, newName, gcsFile);
     }
-    
- }
+    else{
+        console.log("This image format is not allowed, please upload a jpeg or a png");
+        console.log(canPassToreadExifData);
+    }
+};
 
- 
+const downloadNewFile = async (name, newName, gcsFile) => {
+    // Create a new virable that holds a path to the local verison of the file with the new name
+    console.log("This is the new name: " + newName);
+    const newWorkingDir = path.join(os.tmpdir(), 'exifNew');
+    const newTmpFilePath = path.join(newWorkingDir, `Image${newName}`);
+    console.log(`New TmpFilepath: ${newTmpFilePath}`); 
+    await fs.ensureDir(newWorkingDir);
+    const options = {
+        destination: newTmpFilePath,
+    };
+    console.log("This is the name that I am passing in: " + name);
+    await storage.bucket(bucketName).file(gcsFile.name).download(options); 
+    console.log('This is after the new download');
+    await finalBucket.upload(newTmpFilePath);
+    console.log("Photo uploded to new bucket")
+    
+    // Declear an array of thumbnail sizes 
+    const sizes = [64, 256];
+    await Promise.all( sizes.map( async (size) => {
+        // This function resizes the image and saves the thumbnail locally
+
+        // Create a name for the thumbnail image
+        const thumbName = `thumb@${size}_${newName}`;
+
+        // Create a path where we will store the thumbnail iamage locally 
+        const thumbPath = path.join(newWorkingDir, thumbName)
+        console.log("Thumb Path: " + thumbPath)
+
+        // Use the sharp libary to generate the thumbnail image and save it to the thumbpath
+        // Then uplode the thumbnail to the thumbBucket in cloud storage
+        await sharp(newTmpFilePath).resize(size).toFile(thumbPath).then( async () => {
+            console.log(`Resize complete: ${thumbName}`);
+            await thumbNailBucket.upload(thumbPath);
+            console.log(`Upload complete: ${thumbPath}`);
+        });
+    }));
+
+    //Delete the original file uploaded to the "uploads" bucket
+    await secondBucketName.file(gcsFile.name).delete();
+    console.log("Deleting image file after upload: " + secondBucketName);
+         
+
+    await fs.remove(newWorkingDir);
+
+};
