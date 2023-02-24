@@ -50,7 +50,7 @@ exports.generateThumbnails =  async (file, context) => {
         await readMetadata(datafile);
     
         // Delete the local version of the file 
-        // await fs.remove(workingDir);
+        await fs.remove(workingDir);
     }); 
 };
  
@@ -119,3 +119,9 @@ const downloadNewFile = async (name, newName, gcsFile) => {
     await fs.remove(newWorkingDir);
 
 };
+
+
+
+
+
+ 
