@@ -1,21 +1,18 @@
- // Requires 
- const parse = require('fast-csv');
- const {Storage} = require('@google-cloud/storage');
- const {Firestore} = require('@google-cloud/firestore');
- const sharp = require('sharp');
- var iconv = require('iconv-lite');
- const path = require('path');
- const fs = require('fs-extra');
- const os = require('os');
- const getExif = require('exif-async');
- const parseDMS = require('parse-dms');
- 
- 
+// Requires 
+const parse = require('fast-csv');
+const {Storage} = require('@google-cloud/storage');
+const {Firestore} = require('@google-cloud/firestore');
+const sharp = require('sharp');
+const iconv = require('iconv-lite');
+const path = require('path');
+const fs = require('fs-extra');
+const os = require('os');
+const getExif = require('exif-async');
+const parseDMS = require('parse-dms');
+
 // Variables
 const storage = new Storage();
 const firestore = new Firestore();
-const fileName = 'AdobeStock_522623794.jpeg'; // Correct format
-//  const fileName = '6v07ium5q0011.webp'; // Incorrect format image
 const secondBucketName = storage.bucket('photomapper-jessymac-uploads');
 const bucketName = 'photomapper-jessymac-uploads';
 const thumbNailBucket = storage.bucket('photomapper-jessymac-thumbnails');
@@ -63,34 +60,23 @@ exports.generateThumbnails =  async (file, context) => {
 // generateThumbnails();
  
 // Helper functions 
-
 async function readExifData(localFile, datafile){
     // Use the exif-async package to read the exif data
     let exifData;
     try{
         exifData = await getExif(localFile);
-        // console.log(exifData.gps);
-    
         if (Object.keys(exifData.gps).length > 0){
-            const date = await exifData.CreateDate;
-            console.log("This is the date being passed in" + date);
-           let gpsInDecimal = getGPSCoords(exifData.gps, datafile, date);
-        //    let gpsInDecimal = getGPSCoords(exifData.gps);
+           let gpsInDecimal = getGPSCoords(exifData.gps);
            console.log(gpsInDecimal);
-        //    console.log(`Latitude: ${gpsInDecimal.lat}`);
-        //    console.log(`Longitude: ${gpsInDecimal.lon}`);
-        //    console.log(`Created Date: ${exifData.CreateDate}`);
-        //    console.log(`File Name: ${datafile.name}`);
-        //    console.log(`Final URL: https://storage.googleapis.com/${finalBucketName}/${datafile.name}`);
         const imageObject = {
             Latitude: gpsInDecimal.lat,
             Longitude: gpsInDecimal.lon,
             CreatedDate: exifData.exif.CreateDate,
             FileName: datafile.name,
-            FinalURL: `https://storage.googleapis.com/${finalBucketName}/${datafile.name}`
-        }
-           
-        //    return gpsInDecimal;
+            FinalURL: `https://storage.googleapis.com/${finalBucketName}/${datafile.name}`,
+            thumb256_url: `https://storage.googleapis.com/${thumbNailBucketName}/thumb@256_${datafile.name}`,
+            thumb64_url: `https://storage.googleapis.com/${thumbNailBucketName}/thumb@64_${datafile.name}`
+        };
         return imageObject;
         } else{
             console.log("No gps data was found in this photo");
@@ -101,23 +87,17 @@ async function readExifData(localFile, datafile){
         console.log(err);
         return null; 
     }
-    
 }
 
-function getGPSCoords(g, datafile, date){
+function getGPSCoords(g){
     // Parse DMS needs a string in the format of: 
     // DEGREE:MIN:SECDERICTION DEG:MIN:SECDERICTION
     const latString = `${g.GPSLatitude[0]}:${g.GPSLatitude[1]}:${g.GPSLatitude[2]}${g.GPSLatitudeRef}`;
     const lonString = `${g.GPSLongitude[0]}:${g.GPSLongitude[1]}:${g.GPSLongitude[2]}${g.GPSLongitudeRef}`;
-    console.log("This is the date being recived" + date);
-    const newDate = `Create Date: ${date}`;
-    console.log("This is the date veriable" + date);
-    const fileName = `File Name: ${datafile.name}`;
-    const finalURL = `Final URL: https://storage.googleapis.com/${finalBucketName}/${datafile.name}`
-    
     degCoords = parseDMS(`${latString} ${lonString}`);
-    // const final = ([`${degCoords} ${newDate} ${fileName} ${finalURL}`]);
-    // const final = ([degCoords, newDate, fileName, finalURL]);
-    // degCoords = parseDMS(`${latString} ${lonString} ${newDate} ${fileName} ${finalURL}`);
     return degCoords;
 }
+
+
+
+ 
